@@ -1,0 +1,111 @@
+#!/usr/bin/python
+
+import os
+import shutil
+import struct
+import sys
+
+class ImageFile(object):
+    def __init__(self, imf, to_value):
+        self.valid = False
+        self.year = 0
+        self.month = 0
+        self.day = 0
+        self.fd = imf  # Image file descriptor
+        self.endian = '<'
+        self.debug = False
+
+        order, magic = self.get_data('2h')
+        if order != 0x4949 or magic != 0x2a:
+            if order != 0x4d4d or magic != 0x2a00:
+                return
+            self.endian = '>'
+
+        tiff_offset, = self.get_data('I')
+
+        if tiff_offset == to_value:
+            self.valid = True
+
+    def get_data(self, format):
+        real_format = '%s%s' % (self.endian, format)
+        return struct.unpack(real_format,
+                             self.fd.read(struct.calcsize(real_format)))
+    def process_file(self):
+        if not self.debug:
+            return
+        cname = self.__class__.__name__
+        print 'Class %s files are not being processed yet' % cname
+
+    def is_valid(self):
+        return self.valid
+
+class NefImage(ImageFile):
+    def __init__(self, imf):
+        super(NefImage, self).__init__(imf, 0x8)
+
+class Cr2Image(ImageFile):
+    def __init__(self, imf):
+        self.raw_ifd_offset = 0
+        super(Cr2Image, self).__init__(imf, 0x10)
+        if not self.valid:
+            return
+        magic, major, minor, ifd_offset = self.get_data('2sBBI')
+
+        if magic != 'CR' or major != 2 or minor != 0:
+            print 'cr2 magic, major, minor: %s, %d, %d\n' % (magic, major, minor)
+            self.valid = False
+            return
+        self.raw_ifd_offset = ifd_offset
+
+    def parse_ifds(self):
+        ifd_offset = 1 # junk
+        while ifd_offset:
+            num_entries, = self.get_data('H')
+            while num_entries:
+                tag_id, tag_type, num, ptr = self.get_data('HHII')
+                if tag_id == 306: # this is timestamp
+                    self.fd.seek(ptr)
+                    timestamp = self.get_data('%ds' % num)[0].split()[0]
+                    year, month, day = timestamp.split(':')
+                    self.year = int(year)
+                    self.month = int(month)
+                    self.day = int(day)
+                num_entries = num_entries - 1
+            ifd_offset, = self.get_data('I')
+            self.fd.seek(ifd_offset)
+
+    def process_file(self):
+        self.parse_ifds()
+
+def ImageFactory(name):
+    ifd = open(name, 'r')
+    for image_type in (NefImage, Cr2Image):
+        imf = image_type(ifd)
+        if imf.is_valid():
+            return imf
+        ifd.seek(0)
+
+root = '%s/docs/pictures' % os.environ['HOME']
+if __name__ == '__main__':
+    for f in sys.argv[1:]:
+        cr2 = ImageFactory(f)
+        if not cr2.is_valid():
+            continue
+        cr2.process_file()
+        if not cr2.year:
+            print 'No timestamp found in %s' % f
+            continue
+        dst = os.path.join(root,
+                           '%d' % cr2.year,
+                           '%d_%2.2d_%2.2d' % (cr2.year, cr2.month, cr2.day),
+                           os.path.basename(f))
+        if os.path.isfile(dst):
+            print f, 'is already there in', dst
+            continue
+        dst_dir = os.path.dirname(dst)
+        if not os.path.isdir(dst_dir):
+            print 'creating', dst_dir
+            os.mkdir(dst_dir)
+
+        print 'copying', f
+        shutil.copyfile(f, dst)
