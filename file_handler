@@ -30,21 +30,42 @@ class ImageFile(object):
         real_format = '%s%s' % (self.endian, format)
         return struct.unpack(real_format,
                              self.fd.read(struct.calcsize(real_format)))
+
     def process_file(self):
-        if not self.debug:
-            return
-        cname = self.__class__.__name__
-        print 'Class %s files are not being processed yet' % cname
+        self.parse_ifds()
 
     def is_valid(self):
         return self.valid
 
+    def parse_ifds(self):
+        ifd_offset = 1 # junk
+        while True:
+            num_entries, = self.get_data('H')
+            print 'num entries', num_entries
+            while num_entries:
+                tag_id, tag_type, num, ptr = self.get_data('HHII')
+                if tag_id == 306: # this is the timestamp
+                    self.fd.seek(ptr)
+                    timestamp = self.get_data('%ds' % num)[0].split()[0]
+                    year, month, day = timestamp.split(':')
+                    self.year = int(year)
+                    self.month = int(month)
+                    self.day = int(day)
+                num_entries = num_entries - 1
+            ifd_offset, = self.get_data('I')
+            if not ifd_offset or not self.chained_ifds:
+                break
+            self.fd.seek(ifd_offset)
+
 class NefImage(ImageFile):
     def __init__(self, imf):
+        self.chained_ifds = False
         super(NefImage, self).__init__(imf, 0x8)
+
 
 class Cr2Image(ImageFile):
     def __init__(self, imf):
+        self.chained_ifds = True
         self.raw_ifd_offset = 0
         super(Cr2Image, self).__init__(imf, 0x10)
         if not self.valid:
@@ -56,26 +77,6 @@ class Cr2Image(ImageFile):
             self.valid = False
             return
         self.raw_ifd_offset = ifd_offset
-
-    def parse_ifds(self):
-        ifd_offset = 1 # junk
-        while ifd_offset:
-            num_entries, = self.get_data('H')
-            while num_entries:
-                tag_id, tag_type, num, ptr = self.get_data('HHII')
-                if tag_id == 306: # this is timestamp
-                    self.fd.seek(ptr)
-                    timestamp = self.get_data('%ds' % num)[0].split()[0]
-                    year, month, day = timestamp.split(':')
-                    self.year = int(year)
-                    self.month = int(month)
-                    self.day = int(day)
-                num_entries = num_entries - 1
-            ifd_offset, = self.get_data('I')
-            self.fd.seek(ifd_offset)
-
-    def process_file(self):
-        self.parse_ifds()
 
 def ImageFactory(name):
     ifd = open(name, 'r')
