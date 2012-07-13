@@ -14,8 +14,14 @@ class ImageFile(object):
         self.fd = imf  # Image file descriptor
         self.endian = '<'
         self.debug = False
+        self.seek_offset = 0
 
-        order, magic = self.get_data('2h')
+        order, magic = self.get_data('2H')
+
+        if order == 0xd8ff and magic == 0xe1ff: # this must be a JPEG file
+            _, order, magic = self.get_data('Q2H')
+            self.seek_offset = 12
+
         if order != 0x4949 or magic != 0x2a:
             if order != 0x4d4d or magic != 0x2a00:
                 return
@@ -44,7 +50,7 @@ class ImageFile(object):
             while num_entries:
                 tag_id, tag_type, num, ptr = self.get_data('HHII')
                 if tag_id == 306: # this is the timestamp
-                    self.fd.seek(ptr)
+                    self.fd.seek(self.seek_offset + ptr)
                     timestamp = self.get_data('%ds' % num)[0].split()[0]
                     year, month, day = timestamp.split(':')
                     self.year = int(year)
@@ -54,7 +60,8 @@ class ImageFile(object):
             ifd_offset, = self.get_data('I')
             if not ifd_offset or not self.chained_ifds:
                 break
-            self.fd.seek(ifd_offset)
+            self.fd.seek(self.seek_offset + ifd_offset)
+
 
 class NefImage(ImageFile):
     def __init__(self, imf):
@@ -76,6 +83,7 @@ class Cr2Image(ImageFile):
             self.valid = False
             return
         self.raw_ifd_offset = ifd_offset
+
 
 def ImageFactory(name):
     ifd = open(name, 'r')
