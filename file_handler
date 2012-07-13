@@ -41,7 +41,6 @@ class ImageFile(object):
         ifd_offset = 1 # junk
         while True:
             num_entries, = self.get_data('H')
-            print 'num entries', num_entries
             while num_entries:
                 tag_id, tag_type, num, ptr = self.get_data('HHII')
                 if tag_id == 306: # this is the timestamp
@@ -87,10 +86,21 @@ def ImageFactory(name):
         ifd.seek(0)
 
 root = '%s/docs/pictures' % os.environ['HOME']
+all_files = []
+def get_all_files(arg, dirname, names):
+    for n in names:
+        full_name = os.path.join(dirname, n)
+        if os.path.isfile(full_name):
+            all_files.append(full_name)
+
 if __name__ == '__main__':
-    for f in sys.argv[1:]:
+    for d in sys.argv[1:]:
+        os.path.walk(d, get_all_files, 0)
+
+    for f in all_files:
         cr2 = ImageFactory(f)
-        if not cr2.is_valid():
+        if not (cr2 and cr2.is_valid()):
+            print '%s is not an image' % f
             continue
         cr2.process_file()
         if not cr2.year:
