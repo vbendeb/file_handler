@@ -106,7 +106,11 @@ if __name__ == '__main__':
         os.path.walk(d, get_all_files, 0)
 
     for f in all_files:
-        cr2 = ImageFactory(f)
+        try:
+            cr2 = ImageFactory(f)
+        except struct.error:
+            print '%s is not an image' % f
+            continue
         if not (cr2 and cr2.is_valid()):
             print '%s is not an image' % f
             continue
