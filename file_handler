@@ -1,9 +1,12 @@
 #!/usr/bin/python
 
+import glob
 import os
 import shutil
 import struct
+import subprocess
 import sys
+import tempfile
 
 class ImageFile(object):
     def __init__(self, imf, to_value):
@@ -95,15 +98,17 @@ def ImageFactory(name):
 
 #root = '%s/docs/pictures' % os.environ['HOME']
 root = '/backup_disk/home/vbendeb/docs/pictures'
+mount_dir = ''
 all_files = []
+
 def get_all_files(arg, dirname, names):
     for n in names:
         full_name = os.path.join(dirname, n)
         if os.path.isfile(full_name):
             all_files.append(full_name)
 
-if __name__ == '__main__':
-    for d in sys.argv[1:]:
+def process_dirs(dirs):
+    for d in dirs:
         os.path.walk(d, get_all_files, 0)
 
     for f in all_files:
@@ -133,3 +138,35 @@ if __name__ == '__main__':
 
         print 'copying', f
         shutil.copyfile(f, dst)
+
+def mount_removable_device():
+    global mount_dir
+    dirs = glob.glob('/sys/block/sd*')
+    for d in dirs:
+        if open(os.path.join(d, 'removable')).read().strip() == '0':
+            continue
+        if open(os.path.join(d, 'size')).read().strip() == '0':
+            continue
+        dev = '/dev/%s1' % os.path.basename(d)
+
+        mount_dir = tempfile.mkdtemp(prefix='fhandler.')
+        if subprocess.call(['sudo', 'mount', dev, mount_dir]) != 0:
+            print 'Failed to mount %s on %s' % (dev, mount_dir)
+            sys.exit(1)
+        print 'Mounted %s on %s' % (dev, mount_dir)
+        return
+    print 'No removable devices found'
+    sys.exit(0)
+
+if __name__ == '__main__':
+    try:
+        if len(sys.argv) == 1:
+            mount_removable_device()
+            src_dirs = [mount_dir, ]
+        else:
+            src_dirs = sys.argv[1:]
+        process_dirs(src_dirs)
+    finally:
+        if mount_dir:
+            if subprocess.call(['sudo', 'umount', mount_dir]) == 0:
+                subprocess.call(['rm', '-rf', mount_dir])
