@@ -93,7 +93,8 @@ def ImageFactory(name):
             return imf
         ifd.seek(0)
 
-root = '%s/docs/pictures' % os.environ['HOME']
+#root = '%s/docs/pictures' % os.environ['HOME']
+root = '/backup_disk/home/vbendeb/docs/pictures'
 all_files = []
 def get_all_files(arg, dirname, names):
     for n in names:
