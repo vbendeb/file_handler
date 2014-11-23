@@ -140,7 +140,8 @@ def process_dirs(dirs):
 
         if dst_dir in created_dirs:
             print 'copying', f
-            shutil.copyfile(f, dst)
+            shutil.copyfile(f, dst + '.tmp')
+            os.rename(dst + '.tmp', dst)
         else:
             print 'skipping', f
 
