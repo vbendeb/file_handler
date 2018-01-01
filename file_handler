@@ -107,7 +107,7 @@ def get_all_files(arg, dirname, names):
         if os.path.isfile(full_name):
             all_files.append(full_name)
 
-def process_dirs(dirs):
+def process_dirs(dirs, add_to_dirs):
     created_dirs = {}
     for d in dirs:
         os.path.walk(d, get_all_files, 0)
@@ -138,7 +138,7 @@ def process_dirs(dirs):
             os.mkdir(dst_dir)
             created_dirs[dst_dir] = 1
 
-        if dst_dir in created_dirs:
+        if dst_dir in created_dirs or add_to_dirs:
             print 'copying', f
             shutil.copyfile(f, dst + '.tmp')
             os.rename(dst + '.tmp', dst)
@@ -166,13 +166,21 @@ def mount_removable_device():
 
 if __name__ == '__main__':
     try:
+        add_to_dirs = False
+        if len(sys.argv) > 1:
+            if sys.argv[1] == '-a':
+                add_to_dirs = True
+                sys.argv[1:2] = []
         if len(sys.argv) == 1:
             mount_removable_device()
             src_dirs = [mount_dir, ]
         else:
             src_dirs = sys.argv[1:]
-        process_dirs(src_dirs)
+        print src_dirs, add_to_dirs
+        process_dirs(src_dirs, add_to_dirs)
+        print 'Done'
     finally:
         if mount_dir:
+            subprocess.call(['sync',])
             if subprocess.call(['sudo', 'umount', mount_dir]) == 0:
                 subprocess.call(['rm', '-rf', mount_dir])
