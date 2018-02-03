@@ -135,7 +135,7 @@ def process_dirs(dirs, add_to_dirs):
         dst_dir = os.path.dirname(dst)
         if not os.path.isdir(dst_dir):
             print 'creating', dst_dir
-            os.mkdir(dst_dir)
+            os.makedirs(dst_dir)
             created_dirs[dst_dir] = 1
 
         if dst_dir in created_dirs or add_to_dirs:
