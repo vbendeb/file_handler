@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+import argparse
 import glob
 import os
 import shutil
@@ -7,6 +8,19 @@ import struct
 import subprocess
 import sys
 import tempfile
+
+
+def prepare_argparser():
+    parser = argparse.ArgumentParser(description=
+                                     "Utility for copying files into "
+                                     "directories based on file date")
+    parser.add_argument('-a', '--add', action='store_true',
+                        help='if specified - add files to existing directories')
+    parser.add_argument('-t', '--time_offset', action='store',
+                        help='if specified - '
+                        'time offset to add to the photo timestamps')
+
+    return parser
 
 class ImageFile(object):
     def __init__(self, imf, to_value):
@@ -54,6 +68,7 @@ class ImageFile(object):
                 tag_id, tag_type, num, ptr = self.get_data('HHII')
                 if tag_id == 306: # this is the timestamp
                     self.fd.seek(self.seek_offset + ptr)
+                    # Full data string is like '2017:08:06 10:05:12'
                     timestamp = self.get_data('%ds' % num)[0].split()[0]
                     year, month, day = timestamp.split(':')
                     self.year = int(year)
@@ -165,19 +180,17 @@ def mount_removable_device():
     sys.exit(0)
 
 if __name__ == '__main__':
+    parser = prepare_argparser()
+    options, argv = parser.parse_known_args()
+    print options.time_offset
     try:
-        add_to_dirs = False
-        if len(sys.argv) > 1:
-            if sys.argv[1] == '-a':
-                add_to_dirs = True
-                sys.argv[1:2] = []
         if len(sys.argv) == 1:
             mount_removable_device()
             src_dirs = [mount_dir, ]
         else:
             src_dirs = sys.argv[1:]
-        print src_dirs, add_to_dirs
-        process_dirs(src_dirs, add_to_dirs)
+        print src_dirs, options.add
+        process_dirs(src_dirs, options.add)
         print 'Done'
     finally:
         if mount_dir:
