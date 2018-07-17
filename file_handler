@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 import argparse
+import calendar
 import glob
 import os
 import shutil
@@ -8,6 +9,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import time
 
 
 def prepare_argparser():
@@ -54,13 +56,32 @@ class ImageFile(object):
         return struct.unpack(real_format,
                              self.fd.read(struct.calcsize(real_format)))
 
-    def process_file(self):
-        self.parse_ifds()
+    def process_file(self, time_offset):
+        self.parse_ifds(time_offset)
 
     def is_valid(self):
         return self.valid
 
-    def parse_ifds(self):
+    def process_timestamp(self, exif_time, time_offset):
+        # Full data string is like '2017:08:06 10:05:12'
+        if not time_offset:
+            # No need to adjust time, just the exif value.
+            timestamp = exif_time.split()[0]
+            year, month, day = timestamp.split(':')
+            self.year = int(year)
+            self.month = int(month)
+            self.day = int(day)
+            return
+
+        # Need to adjust by time offset.
+        times = time.strptime(exif_time.strip(), '%Y:%m:%d %H:%M:%S')
+        epoch = calendar.timegm(times)
+        times = time.gmtime(epoch + time_offset * 3600)
+        self.year = times.tm_year
+        self.month = times.tm_mon
+        self.day = times.tm_mday
+
+    def parse_ifds(self, time_offset):
         ifd_offset = 1 # junk
         while True:
             num_entries, = self.get_data('H')
@@ -68,12 +89,9 @@ class ImageFile(object):
                 tag_id, tag_type, num, ptr = self.get_data('HHII')
                 if tag_id == 306: # this is the timestamp
                     self.fd.seek(self.seek_offset + ptr)
-                    # Full data string is like '2017:08:06 10:05:12'
-                    timestamp = self.get_data('%ds' % num)[0].split()[0]
-                    year, month, day = timestamp.split(':')
-                    self.year = int(year)
-                    self.month = int(month)
-                    self.day = int(day)
+                    # Drop the trailing \0 character.
+                    self.process_timestamp(self.get_data('%ds' % num)[0][:-1],
+                                           time_offset)
                 num_entries = num_entries - 1
             ifd_offset, = self.get_data('I')
             if not ifd_offset or not self.chained_ifds:
@@ -113,7 +131,6 @@ def ImageFactory(name):
 
 #root = '%s/docs/pictures' % os.environ['HOME']
 root = '/backup_disk/home/vbendeb/docs/pictures'
-mount_dir = ''
 all_files = []
 
 def get_all_files(arg, dirname, names):
@@ -122,7 +139,7 @@ def get_all_files(arg, dirname, names):
         if os.path.isfile(full_name):
             all_files.append(full_name)
 
-def process_dirs(dirs, add_to_dirs):
+def process_dirs(dirs, add_to_dirs, time_offset):
     created_dirs = {}
     for d in dirs:
         os.path.walk(d, get_all_files, 0)
@@ -136,7 +153,7 @@ def process_dirs(dirs, add_to_dirs):
         if not (cr2 and cr2.is_valid()):
             print '%s is not an image' % f
             continue
-        cr2.process_file()
+        cr2.process_file(time_offset)
         if not cr2.year:
             print 'No timestamp found in %s' % f
             continue
@@ -149,8 +166,12 @@ def process_dirs(dirs, add_to_dirs):
             continue
         dst_dir = os.path.dirname(dst)
         if not os.path.isdir(dst_dir):
-            print 'creating', dst_dir
-            os.makedirs(dst_dir)
+            try:
+                print 'creating', dst_dir
+                os.makedirs(dst_dir)
+            except OSError, e:
+                print  >> sys.stderr, ("Failed to create %s (%s)\n", (dst_dir, str(e)))
+                sys.exit(1)
             created_dirs[dst_dir] = 1
 
         if dst_dir in created_dirs or add_to_dirs:
@@ -161,7 +182,6 @@ def process_dirs(dirs, add_to_dirs):
             print 'skipping', f
 
 def mount_removable_device():
-    global mount_dir
     dirs = glob.glob('/sys/block/sd*')
     for d in dirs:
         if open(os.path.join(d, 'removable')).read().strip() == '0':
@@ -175,25 +195,36 @@ def mount_removable_device():
             print 'Failed to mount %s on %s' % (dev, mount_dir)
             sys.exit(1)
         print 'Mounted %s on %s' % (dev, mount_dir)
-        return
+        return mount_dir
     print 'No removable devices found'
     sys.exit(0)
 
 if __name__ == '__main__':
     parser = prepare_argparser()
     options, argv = parser.parse_known_args()
-    print options.time_offset
+    time_offset = options.time_offset
+    mount_dir = None
+    if time_offset:
+        try:
+            time_offset = int(time_offset)
+        except ValueError:
+            print >> sys.stderr, ('%s is not a valid time offset' %
+                                  options.time_offset)
+            sys.exit(1)
+        if time_offset > 23 or time_offset < -23:
+            print >> sys.stderr, ('%s exceeds day hour range' %
+                                  options.time_offset)
+            sys.exit(1)
     try:
-        if len(sys.argv) == 1:
-            mount_removable_device()
+        if not len(argv):
+            mount_dir = mount_removable_device()
             src_dirs = [mount_dir, ]
         else:
-            src_dirs = sys.argv[1:]
-        print src_dirs, options.add
-        process_dirs(src_dirs, options.add)
-        print 'Done'
+            src_dirs = argv
+        process_dirs(src_dirs, options.add, time_offset)
     finally:
         if mount_dir:
+            os.chdir('/tmp')
             subprocess.call(['sync',])
             if subprocess.call(['sudo', 'umount', mount_dir]) == 0:
                 subprocess.call(['rm', '-rf', mount_dir])
