@@ -20,7 +20,7 @@ def prepare_argparser():
                         help='if specified - add files to existing directories')
     parser.add_argument('-t', '--time_offset', action='store',
                         help='if specified - '
-                        'time offset to add to the photo timestamps')
+                        'time offset, hours to add to the photo timestamps')
 
     return parser
 
@@ -148,7 +148,7 @@ def process_dirs(dirs, add_to_dirs, time_offset):
         try:
             cr2 = ImageFactory(f)
         except struct.error:
-            print '%s is not an image' % f
+            print 'exception: %s is not an image' % f
             continue
         if not (cr2 and cr2.is_valid()):
             print '%s is not an image' % f
