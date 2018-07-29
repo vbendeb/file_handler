@@ -35,11 +35,22 @@ class ImageFile(object):
         self.debug = False
         self.seek_offset = 0
 
-        order, magic = self.get_data('2H')
+        order, magic = self.get_data('>2H')
 
-        if order == 0xd8ff and magic == 0xe1ff: # this must be a JPEG file
+        if order == 0xffd8:
+            # this must be a JPEG file
+            self.seek_offset = 4 # We read 4 bytes so far
+            while magic != 0xffe1:
+                if (magic & 0xffe0) != 0xffe0:
+                    print 'Could not find exif header'
+                    return
+                size = self.get_data('>H')
+                self.seek_offset += size - 2
+                self.fd.seek(self.seek_offset)
+                magic = self.get_data('>H')
+
+            self.seek_offset += 10
             _, order, magic = self.get_data('Q2H')
-            self.seek_offset = 12
 
         if order != 0x4949 or magic != 0x2a:
             if order != 0x4d4d or magic != 0x2a00:
