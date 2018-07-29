@@ -31,41 +31,48 @@ class ImageFile(object):
         self.month = 0
         self.day = 0
         self.fd = imf  # Image file descriptor
-        self.endian = '<'
+        self.endian = '>'
         self.debug = False
         self.seek_offset = 0
 
-        order, magic = self.get_data('>2H')
+        order, magic = self.get_data('2H')
 
+        print 'order is %x' % order
         if order == 0xffd8:
             # this must be a JPEG file
             self.seek_offset = 4 # We read 4 bytes so far
             while magic != 0xffe1:
+                print 'magic is %x' % magic
                 if (magic & 0xffe0) != 0xffe0:
                     print 'Could not find exif header'
                     return
-                size = self.get_data('>H')
-                self.seek_offset += size - 2
+                size, = self.get_data('H')
+                self.seek_offset += size
+                print 'seek to', self.seek_offset
                 self.fd.seek(self.seek_offset)
-                magic = self.get_data('>H')
+                magic, = self.get_data('H')
 
-            self.seek_offset += 10
+            self.seek_offset += 8
             _, order, magic = self.get_data('Q2H')
 
-        if order != 0x4949 or magic != 0x2a:
-            if order != 0x4d4d or magic != 0x2a00:
+        print 'order %#x, magic %#x, seek offset %d' % (order, magic, self.seek_offset)
+        if order == 0x4949:
+            if magic != 0x2a00:
                 return
-            self.endian = '>'
+            self.endian = '<'
+        else:
+            if order != 0x4d4d or magic != 0x2a:
+                return
 
         tiff_offset, = self.get_data('I')
+        print 'tiff offset %#x, to value %#x' % (tiff_offset, to_value)
 
         if tiff_offset == to_value:
             self.valid = True
 
     def get_data(self, format):
-        real_format = '%s%s' % (self.endian, format)
-        return struct.unpack(real_format,
-                             self.fd.read(struct.calcsize(real_format)))
+        return struct.unpack(self.endian + format,
+                             self.fd.read(struct.calcsize(format)))
 
     def process_file(self, time_offset):
         self.parse_ifds(time_offset)
@@ -75,6 +82,7 @@ class ImageFile(object):
 
     def process_timestamp(self, exif_time, time_offset):
         # Full data string is like '2017:08:06 10:05:12'
+        print 'time is', exif_time, ['%x' % ord(x) for x in exif_time]
         if not time_offset:
             # No need to adjust time, just the exif value.
             timestamp = exif_time.split()[0]
@@ -93,16 +101,18 @@ class ImageFile(object):
         self.day = times.tm_mday
 
     def parse_ifds(self, time_offset):
-        ifd_offset = 1 # junk
         while True:
             num_entries, = self.get_data('H')
+            print 'got %d entries' % num_entries
             while num_entries:
                 tag_id, tag_type, num, ptr = self.get_data('HHII')
+                print 'tag_id %d ptr %d' % (tag_id, ptr)
                 if tag_id == 306: # this is the timestamp
                     self.fd.seek(self.seek_offset + ptr)
                     # Drop the trailing \0 character.
                     self.process_timestamp(self.get_data('%ds' % num)[0][:-1],
                                            time_offset)
+                    return
                 num_entries = num_entries - 1
             ifd_offset, = self.get_data('I')
             if not ifd_offset or not self.chained_ifds:
@@ -150,10 +160,17 @@ def get_all_files(arg, dirname, names):
         if os.path.isfile(full_name):
             all_files.append(full_name)
 
-def process_dirs(dirs, add_to_dirs, time_offset):
+def process_inputs(inputs, add_to_dirs, time_offset):
     created_dirs = {}
-    for d in dirs:
-        os.path.walk(d, get_all_files, 0)
+    for i in inputs:
+        if os.path.isfile(i):
+            all_files.append(i)
+            continue
+        os.path.walk(i, get_all_files, 0)
+
+    if not all_files:
+        print >> sys.stderr, 'no files to process found'
+        sys.exit(1)
 
     for f in all_files:
         try:
@@ -181,7 +198,7 @@ def process_dirs(dirs, add_to_dirs, time_offset):
                 print 'creating', dst_dir
                 os.makedirs(dst_dir)
             except OSError, e:
-                print  >> sys.stderr, ("Failed to create %s (%s)\n", (dst_dir, str(e)))
+                print >> sys.stderr, ("Failed to create %s (%s)\n", (dst_dir, str(e)))
                 sys.exit(1)
             created_dirs[dst_dir] = 1
 
@@ -229,10 +246,10 @@ if __name__ == '__main__':
     try:
         if not len(argv):
             mount_dir = mount_removable_device()
-            src_dirs = [mount_dir, ]
+            inputs = [mount_dir, ]
         else:
-            src_dirs = argv
-        process_dirs(src_dirs, options.add, time_offset)
+            inputs = argv
+        process_inputs(inputs, options.add, time_offset)
     finally:
         if mount_dir:
             os.chdir('/tmp')
