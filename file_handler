@@ -37,25 +37,22 @@ class ImageFile(object):
 
         order, magic = self.get_data('2H')
 
-        print 'order is %x' % order
         if order == 0xffd8:
             # this must be a JPEG file
             self.seek_offset = 4 # We read 4 bytes so far
             while magic != 0xffe1:
-                print 'magic is %x' % magic
                 if (magic & 0xffe0) != 0xffe0:
-                    print 'Could not find exif header'
+                    print >> sys.stderr, 'Could not find exif header'
                     return
                 size, = self.get_data('H')
                 self.seek_offset += size
-                print 'seek to', self.seek_offset
                 self.fd.seek(self.seek_offset)
                 magic, = self.get_data('H')
+                self.seek_offset += 2 # Account for the new header.
 
             self.seek_offset += 8
             _, order, magic = self.get_data('Q2H')
 
-        print 'order %#x, magic %#x, seek offset %d' % (order, magic, self.seek_offset)
         if order == 0x4949:
             if magic != 0x2a00:
                 return
@@ -65,7 +62,6 @@ class ImageFile(object):
                 return
 
         tiff_offset, = self.get_data('I')
-        print 'tiff offset %#x, to value %#x' % (tiff_offset, to_value)
 
         if tiff_offset == to_value:
             self.valid = True
@@ -82,7 +78,6 @@ class ImageFile(object):
 
     def process_timestamp(self, exif_time, time_offset):
         # Full data string is like '2017:08:06 10:05:12'
-        print 'time is', exif_time, ['%x' % ord(x) for x in exif_time]
         if not time_offset:
             # No need to adjust time, just the exif value.
             timestamp = exif_time.split()[0]
@@ -103,10 +98,8 @@ class ImageFile(object):
     def parse_ifds(self, time_offset):
         while True:
             num_entries, = self.get_data('H')
-            print 'got %d entries' % num_entries
             while num_entries:
                 tag_id, tag_type, num, ptr = self.get_data('HHII')
-                print 'tag_id %d ptr %d' % (tag_id, ptr)
                 if tag_id == 306: # this is the timestamp
                     self.fd.seek(self.seek_offset + ptr)
                     # Drop the trailing \0 character.
@@ -176,10 +169,10 @@ def process_inputs(inputs, add_to_dirs, time_offset):
         try:
             cr2 = ImageFactory(f)
         except struct.error:
-            print 'exception: %s is not an image' % f
+            print >> sys.stderr, 'exception: %s is not an image' % f
             continue
         if not (cr2 and cr2.is_valid()):
-            print '%s is not an image' % f
+            print >> sys.stderr, '%s is not an image' % f
             continue
         cr2.process_file(time_offset)
         if not cr2.year:
