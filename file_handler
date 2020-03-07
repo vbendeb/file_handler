@@ -43,7 +43,7 @@ class ImageFile(object):
             self.seek_offset = 4 # We read 4 bytes so far
             while magic != 0xffe1:
                 if (magic & 0xffe0) != 0xffe0:
-                    print >> sys.stderr, 'Could not find exif header'
+                    print('Could not find exif header', file=sys.stderr)
                     return
                 size, = self.get_data('H')
                 self.seek_offset += size
@@ -134,7 +134,7 @@ class Cr2Image(ImageFile):
         magic, major, minor, ifd_offset = self.get_data('2sBBI')
 
         if magic != 'CR' or major != 2 or minor != 0:
-            print 'cr2 magic, major, minor: %s, %d, %d\n' % (magic, major, minor)
+            print('cr2 magic, major, minor: %s, %d, %d\n' % (magic, major, minor))
             self.valid = False
             return
         self.raw_ifd_offset = ifd_offset
@@ -167,21 +167,21 @@ def process_inputs(inputs, add_to_dirs, time_offset):
         os.path.walk(i, get_all_files, 0)
 
     if not all_files:
-        print >> sys.stderr, 'no files to process found'
+        print('no files to process found', file=sys.stderr)
         sys.exit(1)
 
     for f in all_files:
         try:
             cr2 = ImageFactory(f)
         except struct.error:
-            print >> sys.stderr, 'exception: %s is not an image' % f
+            print('exception: %s is not an image' % f, file=sys.stderr)
             continue
         if not (cr2 and cr2.is_valid()):
-            print >> sys.stderr, '%s is not an image' % f
+            print('%s is not an image' % f, file=sys.stderr)
             continue
         cr2.process_file(time_offset)
         if not cr2.year:
-            print 'No timestamp found in %s' % f
+            print('No timestamp found in %s' % f)
             continue
 
         subdir = 'jpg' if cr2.is_jpg() else 'raw'
@@ -190,24 +190,24 @@ def process_inputs(inputs, add_to_dirs, time_offset):
                            '%d_%2.2d_%2.2d' % (cr2.year, cr2.month, cr2.day),
                            os.path.basename(f))
         if os.path.isfile(dst):
-            print f, 'is already there in', dst
+            print(f, 'is already there in', dst)
             continue
         dst_dir = os.path.dirname(dst)
         if not os.path.isdir(dst_dir):
             try:
-                print 'creating', dst_dir
+                print('creating', dst_dir)
                 os.makedirs(dst_dir)
-            except OSError, e:
-                print >> sys.stderr, ("Failed to create %s (%s)\n", (dst_dir, str(e)))
+            except OSError as e:
+                print(("Failed to create %s (%s)\n", (dst_dir, str(e))), file=sys.stderr)
                 sys.exit(1)
             created_dirs[dst_dir] = 1
 
         if dst_dir in created_dirs or add_to_dirs:
-            print 'copying %s to %s' % (f, subdir)
+            print('copying %s to %s' % (f, subdir))
             shutil.copyfile(f, dst + '.tmp')
             os.rename(dst + '.tmp', dst)
         else:
-            print 'skipping', f
+            print('skipping', f)
 
 def mount_removable_device():
     dirs = glob.glob('/sys/block/sd*')
@@ -220,11 +220,11 @@ def mount_removable_device():
 
         mount_dir = tempfile.mkdtemp(prefix='fhandler.')
         if subprocess.call(['sudo', 'mount', dev, mount_dir]) != 0:
-            print 'Failed to mount %s on %s' % (dev, mount_dir)
+            print('Failed to mount %s on %s' % (dev, mount_dir))
             sys.exit(1)
-        print 'Mounted %s on %s' % (dev, mount_dir)
+        print('Mounted %s on %s' % (dev, mount_dir))
         return mount_dir
-    print 'No removable devices found'
+    print('No removable devices found')
     sys.exit(0)
 
 if __name__ == '__main__':
@@ -236,12 +236,12 @@ if __name__ == '__main__':
         try:
             time_offset = int(time_offset)
         except ValueError:
-            print >> sys.stderr, ('%s is not a valid time offset' %
-                                  options.time_offset)
+            print(('%s is not a valid time offset' %
+                                  options.time_offset), file=sys.stderr)
             sys.exit(1)
         if time_offset > 23 or time_offset < -23:
-            print >> sys.stderr, ('%s exceeds day hour range' %
-                                  options.time_offset)
+            print(('%s exceeds day hour range' %
+                                  options.time_offset), file=sys.stderr)
             sys.exit(1)
     try:
         if not len(argv):
