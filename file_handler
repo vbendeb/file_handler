@@ -85,7 +85,7 @@ class ImageFile(object):
         # Full data string is like '2017:08:06 10:05:12'
         if not time_offset:
             # No need to adjust time, just the exif value.
-            timestamp = exif_time.split()[0]
+            timestamp = exif_time.split()[0].decode('ascii')
             year, month, day = timestamp.split(':')
             self.year = int(year)
             self.month = int(month)
@@ -141,7 +141,7 @@ class Cr2Image(ImageFile):
 
 
 def ImageFactory(name):
-    ifd = open(name, 'r')
+    ifd = open(name, 'rb')
     for image_type in (NefImage, Cr2Image):
         imf = image_type(ifd)
         if imf.is_valid():
@@ -152,19 +152,15 @@ def ImageFactory(name):
 root = '/backup_disk/home/vbendeb/docs/pictures'
 all_files = []
 
-def get_all_files(arg, dirname, names):
-    for n in names:
-        full_name = os.path.join(dirname, n)
-        if os.path.isfile(full_name):
-            all_files.append(full_name)
-
 def process_inputs(inputs, add_to_dirs, time_offset):
     created_dirs = {}
     for i in inputs:
         if os.path.isfile(i):
             all_files.append(i)
             continue
-        os.path.walk(i, get_all_files, 0)
+        for this_dir, dirs, files in os.walk(i):
+            for f in files:
+                all_files.append(os.path.join(this_dir, f))
 
     if not all_files:
         print('no files to process found', file=sys.stderr)
@@ -203,7 +199,7 @@ def process_inputs(inputs, add_to_dirs, time_offset):
             created_dirs[dst_dir] = 1
 
         if dst_dir in created_dirs or add_to_dirs:
-            print('copying %s to %s' % (f, subdir))
+            print('copying %s to %s' % (f, dst_dir))
             shutil.copyfile(f, dst + '.tmp')
             os.rename(dst + '.tmp', dst)
         else:
