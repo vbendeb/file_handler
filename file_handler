@@ -34,6 +34,7 @@ class ImageFile(object):
         self.endian = '>'
         self.debug = False
         self.seek_offset = 0
+        self.jpg = False
 
         order, magic = self.get_data('2H')
 
@@ -52,6 +53,7 @@ class ImageFile(object):
 
             self.seek_offset += 8
             _, order, magic = self.get_data('Q2H')
+            self.jpg = True
 
         if order == 0x4949:
             if magic != 0x2a00:
@@ -75,6 +77,9 @@ class ImageFile(object):
 
     def is_valid(self):
         return self.valid
+
+    def is_jpg(self):
+        return self.valid and self.jpg
 
     def process_timestamp(self, exif_time, time_offset):
         # Full data string is like '2017:08:06 10:05:12'
@@ -178,7 +183,9 @@ def process_inputs(inputs, add_to_dirs, time_offset):
         if not cr2.year:
             print 'No timestamp found in %s' % f
             continue
-        dst = os.path.join(root,
+
+        subdir = 'jpg' if cr2.is_jpg() else 'raw'
+        dst = os.path.join(root, subdir,
                            '%d' % cr2.year,
                            '%d_%2.2d_%2.2d' % (cr2.year, cr2.month, cr2.day),
                            os.path.basename(f))
@@ -196,7 +203,7 @@ def process_inputs(inputs, add_to_dirs, time_offset):
             created_dirs[dst_dir] = 1
 
         if dst_dir in created_dirs or add_to_dirs:
-            print 'copying', f
+            print 'copying %s to %s' % (f, subdir)
             shutil.copyfile(f, dst + '.tmp')
             os.rename(dst + '.tmp', dst)
         else:
