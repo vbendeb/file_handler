@@ -15,7 +15,7 @@ import time
 def prepare_argparser():
     parser = argparse.ArgumentParser(description=
                                      "Utility for copying files into "
-                                     "directories based on file date")
+                                     "directories based on EXIF file date")
     parser.add_argument('-a', '--add', action='store_true',
                         help='if specified - add files to existing directories')
     parser.add_argument('-t', '--time_offset', action='store',
@@ -172,6 +172,9 @@ def process_inputs(inputs, add_to_dirs, time_offset):
         except struct.error:
             print('exception: %s is not an image' % f, file=sys.stderr)
             continue
+        except OSError as e:
+            print("Can't read %s, error:", e, file=sys.stderr)
+            continue
         if not (cr2 and cr2.is_valid()):
             print('%s is not an image' % f, file=sys.stderr)
             continue
@@ -200,8 +203,11 @@ def process_inputs(inputs, add_to_dirs, time_offset):
 
         if dst_dir in created_dirs or add_to_dirs:
             print('copying %s to %s' % (f, dst_dir))
-            shutil.copyfile(f, dst + '.tmp')
-            os.rename(dst + '.tmp', dst)
+            try:
+                shutil.copyfile(f, dst + '.tmp')
+                os.rename(dst + '.tmp', dst)
+            except OSError as e:
+                print("Failed to copy %s:", e, file=sys.stderr)
         else:
             print('skipping', f)
 
