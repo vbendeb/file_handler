@@ -12,6 +12,8 @@ import tempfile
 import time
 
 
+ROOT_DIR = '/backup_disk/home/' + os.environ.get('USER', '') + '/docs/pictures'
+
 def prepare_argparser():
     parser = argparse.ArgumentParser(description=
                                      "Utility for copying files into "
@@ -21,7 +23,9 @@ def prepare_argparser():
     parser.add_argument('-t', '--time_offset', action='store',
                         help='if specified - '
                         'time offset, hours to add to the photo timestamps')
-
+    parser.add_argument('-r', '--root', action='store',
+                        help='root directory of the photo library. By default'
+                        ' set to %s' % ROOT_DIR)
     return parser
 
 class ImageFile(object):
@@ -148,8 +152,6 @@ def ImageFactory(name):
             return imf
         ifd.seek(0)
 
-#root = '%s/docs/pictures' % os.environ['HOME']
-root = '/backup_disk/home/vbendeb/docs/pictures'
 all_files = []
 
 def process_inputs(inputs, add_to_dirs, time_offset):
@@ -184,7 +186,7 @@ def process_inputs(inputs, add_to_dirs, time_offset):
             continue
 
         subdir = 'jpg' if cr2.is_jpg() else 'raw'
-        dst = os.path.join(root, subdir,
+        dst = os.path.join(ROOT_DIR, subdir,
                            '%d' % cr2.year,
                            '%d_%2.2d_%2.2d' % (cr2.year, cr2.month, cr2.day),
                            os.path.basename(f))
