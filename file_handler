@@ -213,23 +213,34 @@ def process_inputs(inputs, add_to_dirs, time_offset):
         else:
             print('skipping', f)
 
-def mount_removable_device():
+def get_removable_devices():
     dirs = glob.glob('/sys/block/sd*')
+    devs = []
     for d in dirs:
         if open(os.path.join(d, 'removable')).read().strip() == '0':
             continue
         if open(os.path.join(d, 'size')).read().strip() == '0':
             continue
-        dev = '/dev/%s1' % os.path.basename(d)
+        devs.append('/dev/%s1' % os.path.basename(d))
+    return devs
 
-        mount_dir = tempfile.mkdtemp(prefix='fhandler.')
-        if subprocess.call(['sudo', 'mount', dev, mount_dir]) != 0:
-            print('Failed to mount %s on %s' % (dev, mount_dir))
+def mount_removable_device():
+
+    devs = get_removable_devices()
+    if len(devs) != 1:
+        if len(devs) == 0:
+            print('No removable devices found', file=sys.stderr)
             sys.exit(1)
-        print('Mounted %s on %s' % (dev, mount_dir))
-        return mount_dir
-    print('No removable devices found')
-    sys.exit(0)
+        print('too many removable devices: %s' % ' '.join(devs),
+              file=sys.stderr)
+        sys.exit(1)
+    mount_dir = tempfile.mkdtemp(prefix='fhandler.')
+    dev = devs[0]
+    if subprocess.call(['sudo', 'mount', dev, mount_dir]) != 0:
+        print('Failed to mount %s on %s' % (dev, mount_dir), file=sys.stderr)
+        sys.exit(1)
+    print('Mounted %s on %s' % (dev, mount_dir))
+    return mount_dir
 
 if __name__ == '__main__':
     parser = prepare_argparser()
